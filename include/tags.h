@@ -26,6 +26,7 @@ struct setup_data {
 #define SKL_TAG_NO_CLASS         0x00
 #define SKL_TAG_END              0x00
 #define SKL_TAG_SETUP_INDIRECT   0x01
+#define SKL_TAG_IOMMU_INFO       0x02
 #define SKL_TAG_TAGS_SIZE        0x0F    /* Always first */
 
 /* Tags specifying kernel type */
@@ -75,6 +76,20 @@ struct skl_tag_hash {
 struct skl_tag_setup_indirect {
     struct skl_tag_hdr hdr;
     struct setup_data data;
+    struct setup_indirect indirect;
+} __packed;
+
+struct skl_tag_iommu_info {
+    struct skl_tag_hdr hdr;
+    u64 device_table_addr;
+    u32 device_table_size;
+    u32 count;
+    /* ivhd_entry[] */
+} __packed;
+
+struct skl_ivhd_entry {
+    u32 device_id;
+    u64 base_address;
 } __packed;
 
 extern struct skl_tag_tags_size bootloader_data;

@@ -6,6 +6,12 @@ ifeq ($(DEBUG),y)
 CFLAGS  += -DDEBUG
 endif
 
+ifeq ($(METHOD2),y)
+CFLAGS  += -DMETHOD2
+else
+CFLAGS  += -DMETHOD1
+endif
+
 ifeq ($(LTO),y)
 CFLAGS  += -flto
 LDFLAGS += -flto
