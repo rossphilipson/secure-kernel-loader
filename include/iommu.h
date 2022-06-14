@@ -134,7 +134,6 @@ extern iommu_command_t command_buf[2];
 
 void disable_memory_protection(void);
 
-u32 iommu_locate(void);
-u32 iommu_load_device_table(u32 cap, volatile u64 *completed);
+void iommu_setup(void);
 
 #endif /* __IOMMU_H__ */
