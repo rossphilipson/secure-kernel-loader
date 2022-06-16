@@ -17,53 +17,58 @@
 #include <defs.h>
 #include <boot.h>
 #include <types.h>
+#include <string.h>
+#include <tags.h>
+#include <sha256.h>
 #include <pci.h>
 #include <iommu.h>
 #include <printk.h>
 
-iommu_dte_t device_table[2 * PAGE_SIZE / sizeof(iommu_dte_t)] __page_data = {
+#define DEVICE_TABLE_SIZE (2 * PAGE_SIZE / sizeof(iommu_dte_t))
+
+iommu_dte_t device_table[DEVICE_TABLE_SIZE] __page_data = {
     [0 ... ARRAY_SIZE(device_table) - 1 ] = {
         .a = IOMMU_DTE_Q0_V + IOMMU_DTE_Q0_TV,
     },
 };
-iommu_command_t command_buf[2] __aligned(sizeof(iommu_command_t));
-char event_log[PAGE_SIZE] __page_data;
+iommu_dte_t *device_table_ptr = &device_table[0];
 
-static u32 iommu_locate(void)
-{
-    return pci_locate(IOMMU_PCI_BUS,
-                      PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION));
-}
+iommu_command_t command_buf[2] __aligned(sizeof(iommu_command_t));
+iommu_command_t *command_buf_ptr = &command_buf[0];
+
+char event_log[PAGE_SIZE] __page_data;
+char *event_log_ptr = &event_log[0];
+
+#ifdef METHOD2
+static u8 cmd_buffer_hash[SHA256_DIGEST_SIZE];
+static u8 device_table_hash[SHA256_DIGEST_SIZE];
+#endif
 
 static void send_command(u64 *mmio_base, iommu_command_t cmd)
 {
     u32 cmd_ptr = mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] >> 4;
-    command_buf[cmd_ptr++] = cmd;
+    command_buf_ptr[cmd_ptr++] = cmd;
     smp_wmb();
+#ifdef METHOD2
+    if ( cmd.opcode == INVALIDATE_IOMMU_ALL )
+    {
+        /* Hash command buffer and device table before sending command */
+        sha256sum(cmd_buffer_hash, command_buf_ptr,
+                  2*sizeof(iommu_command_t));
+        sha256sum(device_table_hash, device_table_ptr,
+                  DEVICE_TABLE_SIZE);
+    }
+#endif
     mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = (cmd_ptr << 4);
 }
 
-static u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
+static u32 iommu_load_device_table(u64 *mmio_base, volatile u64 *completed)
 {
-    u64 *mmio_base;
-    u32 low, hi;
     iommu_command_t cmd = {0};
 
-    pci_read(0, IOMMU_PCI_BUS,
-             PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
-             IOMMU_CAP_BA_LOW(cap),
-             4, &low);
-
     /* IOMMU must be enabled by AGESA */
-    if ( (low & IOMMU_CAP_BA_LOW_ENABLE) == 0 )
+    if ( (_u(mmio_base) & IOMMU_CAP_BA_LOW_ENABLE) == 0 )
         return 1;
-
-    pci_read(0, IOMMU_PCI_BUS,
-             PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
-             IOMMU_CAP_BA_HIGH(cap),
-             4, &hi);
-
-    mmio_base = _p((u64)hi << 32 | (low & 0xffffc000));
 
     print("IOMMU MMIO Base Address = ");
     print_u64((u64)_u(mmio_base));
@@ -77,7 +82,7 @@ static u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
     smp_wmb();
 
     /* Address and size of Device Table (bits 8:0 = 0 -> 4KB; 1 -> 8KB ...) */
-    mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)_u(device_table) | 1;
+    mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA] = (u64)_u(device_table_ptr) | 1;
 
     print_u64(mmio_base[IOMMU_MMIO_DEVICE_TABLE_BA]);
     print("IOMMU_MMIO_DEVICE_TABLE_BA\n");
@@ -102,15 +107,15 @@ static u32 iommu_load_device_table(u32 cap, volatile u64 *completed)
      * command_buf[] to begin with, but we do save almost 4k of space,
      * 1/16th of that available to us.
      */
-    mmio_base[IOMMU_MMIO_COMMAND_BUF_BA] = (u64)(_u(command_buf) & ~0xfff)| (0x9ULL << 56);
+    mmio_base[IOMMU_MMIO_COMMAND_BUF_BA] = (u64)(_u(command_buf_ptr) & ~0xfff)| (0x9ULL << 56);
     mmio_base[IOMMU_MMIO_COMMAND_BUF_HEAD] =
-        mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = _u(command_buf) & 0xff0;
+        mmio_base[IOMMU_MMIO_COMMAND_BUF_TAIL] = _u(command_buf_ptr) & 0xff0;
 
     print_u64(mmio_base[IOMMU_MMIO_COMMAND_BUF_BA]);
     print("IOMMU_MMIO_COMMAND_BUF_BA\n");
 
     /* Address and size of Event Log, reset head and tail registers */
-    mmio_base[IOMMU_MMIO_EVENT_LOG_BA] = (u64)_u(event_log) | (0x8ULL << 56);
+    mmio_base[IOMMU_MMIO_EVENT_LOG_BA] = (u64)_u(event_log_ptr) | (0x8ULL << 56);
     mmio_base[IOMMU_MMIO_EVENT_LOG_HEAD] = 0;
     mmio_base[IOMMU_MMIO_EVENT_LOG_TAIL] = 0;
 
@@ -195,9 +200,34 @@ static void do_dma(void)
 }
 #endif
 
-void iommu_setup(void)
+#ifdef METHOD1
+static u32 iommu_locate_cap(void)
+{
+    return pci_locate(IOMMU_PCI_BUS,
+                      PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION));
+}
+
+static u64 *iommu_locate_bar(u32 cap)
+{
+    u32 low, hi;
+
+    pci_read(0, IOMMU_PCI_BUS,
+             PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
+             IOMMU_CAP_BA_LOW(cap),
+             4, &low);
+
+    pci_read(0, IOMMU_PCI_BUS,
+             PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
+             IOMMU_CAP_BA_HIGH(cap),
+             4, &hi);
+
+    return _p((u64)hi << 32 | (low & 0xffffc000));
+}
+
+void iommu_setup_method1(void)
 {
     u32 iommu_cap;
+    u64 *mmio_base;
     volatile u64 iommu_done __attribute__ ((aligned (8))) = 0;
 
 #ifdef TEST_DMA
@@ -218,7 +248,13 @@ void iommu_setup(void)
 #endif
 
     pci_init();
-    iommu_cap = iommu_locate();
+    iommu_cap = iommu_locate_cap();
+    if ( !iommu_cap )
+    {
+        print("Failed to locate IOMMU device and capabilities\n");
+        return;
+    }
+    mmio_base = iommu_locate_bar(iommu_cap);
 
     /*
      * SKINIT enables protection against DMA access from devices for SLB
@@ -240,11 +276,9 @@ void iommu_setup(void)
      *        configured before SKINIT
      */
 
-    if ( iommu_cap == 0 || iommu_load_device_table(iommu_cap, &iommu_done) )
+    if ( iommu_load_device_table(mmio_base, &iommu_done) )
     {
-        if ( iommu_cap )
-            print("IOMMU disabled by a firmware, please check your settings\n");
-
+        print("IOMMU disabled by a firmware, please check your settings\n");
         print("Couldn't set up IOMMU, DMA attacks possible!\n");
     }
     else
@@ -277,7 +311,7 @@ void iommu_setup(void)
         hexdump(_p(0), 0x30);
 #endif
 
-        iommu_load_device_table(iommu_cap, &iommu_done);
+        iommu_load_device_table(mmio_base, &iommu_done);
         print("Flushing IOMMU cache");
         while ( !iommu_done )
             print(".");
@@ -309,3 +343,92 @@ void iommu_setup(void)
     hexdump(_p(0), 0x30);
 #endif
 }
+#else
+static u8 cmd_buffer_rehash[SHA256_DIGEST_SIZE];
+static u8 device_table_rehash[SHA256_DIGEST_SIZE];
+
+static void __attribute__((noreturn)) terminate(void)
+{
+    print("Possible attack detected, reseting system now!");
+    die();
+    unreachable();
+}
+
+void iommu_setup_method2(void)
+{
+    struct skl_tag_hdr *t = (struct skl_tag_hdr*) &bootloader_data;
+    struct skl_tag_iommu_info *iommu_info;
+    volatile u64 *iommu_done;
+    struct skl_ivhd_entry *ivhd;
+    u64 *mmio_base;
+    u32 i;
+
+    iommu_info = (struct skl_tag_iommu_info *)next_of_type(t, SKL_TAG_IOMMU_INFO);
+    if ( iommu_info->hdr.type   != SKL_TAG_TAGS_SIZE
+         || iommu_info->hdr.len != sizeof(struct skl_tag_iommu_info) )
+    {
+        print("Invalid IOMMU information provided, cannot configure IOMMU\n");
+        return;
+    }
+
+    if ( !iommu_info->count )
+    {
+        print("No IOMMU hardware devices present\n");
+        return;
+    }
+
+    /*
+     * Copy the device table, event log and command buffer outside of the
+     * SKL and the exclusion zone. There is no way currently to disable the
+     * exclusion zone on Milan/Rome gen servers. That is why a separate
+     * method is required to configure the IOMMU.
+     */
+    if ( iommu_info->dma_area_size <
+        DEVICE_TABLE_SIZE + PAGE_SIZE + 2*sizeof(iommu_command_t) + sizeof(u64) )
+    {
+        print("IOMMU DMA area too small, cannot setup IOMMU\n");
+        return;
+    }
+    memset(_p(iommu_info->dma_area_addr), 0, iommu_info->dma_area_size);
+    memcpy(_p(iommu_info->dma_area_addr), &device_table[0], DEVICE_TABLE_SIZE);
+    device_table_ptr = (iommu_dte_t *)_u(iommu_info->dma_area_addr);
+    event_log_ptr = (char *)(_u(iommu_info->dma_area_addr) + DEVICE_TABLE_SIZE);
+    command_buf_ptr = (iommu_command_t *)(_u(iommu_info->dma_area_addr) +
+                                          DEVICE_TABLE_SIZE + PAGE_SIZE);
+    /* Note iommu_done will end up 8b aligned in the end */
+    iommu_done = (u64 *)(_u(iommu_info->dma_area_addr) + DEVICE_TABLE_SIZE +
+                         PAGE_SIZE + 2*sizeof(iommu_command_t));
+
+    ivhd = (struct skl_ivhd_entry *)
+           ((u8 *)iommu_info + sizeof(struct skl_tag_iommu_info));
+
+    for ( i = 0; i < iommu_info->count; i++, ivhd++)
+    {
+        print("IOMMU Device ID = ");
+        print_u64((u64)ivhd->device_id);
+        print("\n");
+
+        mmio_base = _p(ivhd->base_address);
+
+        /* Setup new device table for this IOMMU */
+        if ( iommu_load_device_table(mmio_base, iommu_done) )
+        {
+            print("IOMMU disabled by a firmware, please check your settings\n");
+            print("Couldn't set up IOMMU, DMA attacks possible!\n");
+        }
+
+        while ( !(*iommu_done) )
+            print(".");
+
+        /* Rehash command buffer and device table after completion */
+        sha256sum(cmd_buffer_rehash, command_buf_ptr,
+                  2*sizeof(iommu_command_t));
+        sha256sum(device_table_rehash, device_table_ptr,
+                  DEVICE_TABLE_SIZE);
+
+        if ( memcmp(cmd_buffer_hash, cmd_buffer_rehash, SHA256_DIGEST_SIZE) ||
+             memcmp(device_table_hash, device_table_rehash, SHA256_DIGEST_SIZE) )
+            terminate();
+    }
+}
+#endif

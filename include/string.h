@@ -21,6 +21,9 @@ void *memset(void *s, int c, size_t n);
 void *memcpy(void *dst, const void *src, size_t n);
 #define memcpy(d, s, n) __builtin_memcpy(d, s, n)
 
+void *memcmp(const void *dst, const void *src, size_t n);
+#define memcmp(d, s, n) __builtin_memcmp(d, s, n)
+
 size_t strlen(const char *s);
 #define strlen(s)       __builtin_strlen(s)
 

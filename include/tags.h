@@ -81,8 +81,9 @@ struct skl_tag_setup_indirect {
 
 struct skl_tag_iommu_info {
     struct skl_tag_hdr hdr;
-    u64 device_table_addr;
-    u32 device_table_size;
+    u32 dma_area_addr; /* Must be < 4G for workaround */
+    u32 dma_area_size;
+    u32 dev_disabled;
     u32 count;
     /* ivhd_entry[] */
 } __packed;

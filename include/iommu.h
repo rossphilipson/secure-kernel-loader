@@ -134,6 +134,10 @@ extern iommu_command_t command_buf[2];
 
 void disable_memory_protection(void);
 
-void iommu_setup(void);
+#ifdef METHOD1
+void iommu_setup_method1(void);
+#else
+void iommu_setup_method2(void);
+#endif
 
 #endif /* __IOMMU_H__ */
