@@ -66,10 +66,6 @@ static u32 iommu_load_device_table(u64 *mmio_base, volatile u64 *completed)
 {
     iommu_command_t cmd = {0};
 
-    /* IOMMU must be enabled by AGESA */
-    if ( (_u(mmio_base) & IOMMU_CAP_BA_LOW_ENABLE) == 0 )
-        return 1;
-
     print("IOMMU MMIO Base Address = ");
     print_u64((u64)_u(mmio_base));
     print("\n");
@@ -216,6 +212,10 @@ static u64 *iommu_locate_bar(u32 cap)
              IOMMU_CAP_BA_LOW(cap),
              4, &low);
 
+    /* IOMMU must be enabled by AGESA */
+    if ( (low & IOMMU_CAP_BA_LOW_ENABLE) == 0 )
+        return NULL;
+
     pci_read(0, IOMMU_PCI_BUS,
              PCI_DEVFN(IOMMU_PCI_DEVICE, IOMMU_PCI_FUNCTION),
              IOMMU_CAP_BA_HIGH(cap),
@@ -254,7 +254,14 @@ void iommu_setup_method1(void)
         print("Failed to locate IOMMU device and capabilities\n");
         return;
     }
+
     mmio_base = iommu_locate_bar(iommu_cap);
+    if ( !mmio_base )
+    {
+        print("IOMMU disabled by a firmware, please check your settings\n");
+        print("Couldn't set up IOMMU, DMA attacks possible!\n");
+        return;
+    }
 
     /*
      * SKINIT enables protection against DMA access from devices for SLB
@@ -278,8 +285,7 @@ void iommu_setup_method1(void)
 
     if ( iommu_load_device_table(mmio_base, &iommu_done) )
     {
-        print("IOMMU disabled by a firmware, please check your settings\n");
-        print("Couldn't set up IOMMU, DMA attacks possible!\n");
+        print("Failed initial device table load, DMA attacks possible!\n");
     }
     else
     {
@@ -361,6 +367,7 @@ void iommu_setup_method2(void)
     volatile u64 *iommu_done;
     struct skl_ivhd_entry *ivhd;
     u64 *mmio_base;
+    u64 mmio_val;
     u32 i;
 
     iommu_info = (struct skl_tag_iommu_info *)next_of_type(t, SKL_TAG_IOMMU_INFO);
@@ -408,14 +415,19 @@ void iommu_setup_method2(void)
         print_u64((u64)ivhd->device_id);
         print("\n");
 
-        mmio_base = _p(ivhd->base_address);
-
-        /* Setup new device table for this IOMMU */
-        if ( iommu_load_device_table(mmio_base, iommu_done) )
+        /* IOMMU must be enabled by AGESA */
+        if ( (ivhd->base_address & IOMMU_CAP_BA_LOW_ENABLE) == 0 )
         {
             print("IOMMU disabled by a firmware, please check your settings\n");
             print("Couldn't set up IOMMU, DMA attacks possible!\n");
+            continue;
         }
+
+        mmio_val = ivhd->base_address & 0xffffffffffffc000;
+        mmio_base = _p(mmio_val);
+
+        /* Setup new device table for this IOMMU */
+        iommu_load_device_table(mmio_base, iommu_done);
 
         while ( !(*iommu_done) )
             print(".");
