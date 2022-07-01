@@ -17,7 +17,6 @@
  */
 
 #include <boot.h>
-#include <string.h>
 #include <tags.h>
 #include "tpmlib/tpm.h"
 #include "tpmlib/tpm2_constants.h"
