@@ -371,7 +371,8 @@ void iommu_setup_method2(void)
     u32 i;
 
     iommu_info = (struct skl_tag_iommu_info *)next_of_type(t, SKL_TAG_IOMMU_INFO);
-    if ( iommu_info->hdr.type   != SKL_TAG_IOMMU_INFO
+    if ( !iommu_info
+         || iommu_info->hdr.type != SKL_TAG_IOMMU_INFO
          || iommu_info->hdr.len != sizeof(struct skl_tag_iommu_info) )
     {
         print("Invalid IOMMU information provided, cannot configure IOMMU\n");
