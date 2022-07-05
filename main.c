@@ -29,6 +29,7 @@
 #include <event_log.h>
 #include <multiboot2.h>
 #include <tags.h>
+#include <string.h>
 
 u32 boot_protocol;
 
