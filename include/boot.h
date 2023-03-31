@@ -45,6 +45,7 @@ extern const char _end_of_measured[];
 typedef struct __packed sl_header {
     u16 skl_entry_point;
     u16 skl_measured_size;
+    u8 reserved[62];
     u16 skl_info_offset;
     u16 bootloader_data_offset;
 } sl_header_t;

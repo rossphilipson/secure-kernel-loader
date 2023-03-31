@@ -57,13 +57,18 @@ all: skl.bin
 -include Makefile.local
 
 # Generate a flat binary
-#
+ifeq ($(AMDSL), n)
 # As a sanity check, look for the SKL UUID at its expected offset in the binary
 # image.  One reason this might fail is if the linker decides to put an
 # unreferenced section ahead of .text, in which case link.lds needs adjusting.
 skl.bin: skl Makefile
 	objcopy -O binary -S -R '.note.*' -R '.got.plt' $< $@
 	@./sanity_check.sh
+else
+skl.bin: skl Makefile
+	objcopy -O binary -S $< $@
+	python3 header_tool.py --image=skl.bin --version=0x02000200 --spl=0x00000001 --output=AmdSl_debug.BIN
+endif
 
 skl: link.lds $(OBJ) Makefile
 	$(CC) -Wl,-T,link.lds $(LDFLAGS) $(OBJ) -o $@

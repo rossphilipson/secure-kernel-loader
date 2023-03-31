@@ -30,9 +30,33 @@
 
 	.section .headers, "ax", @progbits
 
+/**
+ * sl_header: AMD-SL header
+ *
+ *   We only know about some of the fields in this header, such as the
+ *   entry point and AMD-SL length. The remaining portions are assumed
+ *   to be proprietary information, and we don't have access to them.
+ *
+ *   We received the following values from AMD and needed to know what
+ *   they meant. AMD did not respond to our query for details about this
+ *   header, and the DRTM spec does not define the fields.
+ */
 GLOBAL(sl_header)
 	.word	_entry           /* SL header SKL offset to code start */
 	.word	_end_of_measured /* SL header SKL measured length */
+	.byte	0xda, 0x75, 0xc4, 0x0e, 0xd0, 0xd3, 0x5d, 0x48, 0xb6, 0xae, 0x3c, 0xb2, 0xf, 0xb7, 0xad, 0x3a
+	.long	0xffffffff
+	.long	0xaaaa5555
+	.word	0x1E
+	.long	0x00000008
+	.long	0x00860f00
+	.long	0x00a50f00
+	.long	0x00a40f00
+	.long	0x00a70f00
+	.long	0x00a00f00
+	.long	0x00a10f00
+	.long	0x00a80f00
+	.long	0x00aa0f00
 	.word	skl_info         /* Offset to SKL info with UUID and version */
 	.word	bootloader_data  /* Offset to SLRT filled by the bootloader */
 ENDDATA(sl_header)
