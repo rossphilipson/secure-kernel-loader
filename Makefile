@@ -68,6 +68,7 @@ else
 skl.bin: skl Makefile
 	objcopy -O binary -S $< $@
 	python3 header_tool.py --image=skl.bin --version=0x02000200 --spl=0x00000001 --output=AmdSl_debug.BIN
+	./AmdSlSigningTool -i AmdSl_debug.BIN -o AmdSl_debug.BIN.sign
 endif
 
 skl: link.lds $(OBJ) Makefile
