@@ -263,8 +263,8 @@ int event_log_init(struct tpm *tpm)
     memset(ptr_current, 0, info->size);
 
     /* Check if log format matches TPM family */
-    if ((tpm->family == TPM12 && info->format != SLR_LOG_FORMAT_TPM12_TXT) ||
-        (tpm->family == TPM20 && info->format != SLR_LOG_FORMAT_TPM20_TCG))
+    if ((tpm->family == TPM12 && info->format != SLR_DRTM_TPM12_LOG) ||
+        (tpm->family == TPM20 && info->format != SLR_DRTM_TPM20_LOG))
         goto err;
 
     /* Write log header */
