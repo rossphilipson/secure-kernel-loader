@@ -2,6 +2,8 @@
 CFLAGS  :=
 LDFLAGS :=
 
+AMDSL ?= n
+
 ifeq ($(DEBUG),y)
 CFLAGS  += -DDEBUG
 endif
@@ -11,7 +13,13 @@ CFLAGS  += -flto
 LDFLAGS += -flto
 endif
 
+ifeq ($(AMDSL), n)
 BITS ?= 64
+else
+BITS ?= 32
+CFLAGS += -DAMDSL
+endif
+
 ifeq ($(BITS),32)
 CFLAGS  += -m32 -mregparm=3 -fno-plt -freg-struct-return
 LDFLAGS += -m32
