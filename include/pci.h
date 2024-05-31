@@ -25,6 +25,10 @@
 #define PCI_CONFIG_ADDR_PORT    (0x0cf8)
 #define PCI_CONFIG_DATA_PORT    (0x0cfc)
 
+#define PCI_BUSMAX              255
+#define PCI_SLOTMAX             32
+#define PCI_FUNCMAX             8
+
 #define PCI_CAPABILITY_LIST     0x34    /* Offset of first capability list entry */
 
 /* PCI capability ID for IOMMU and SVM DEV - AMD Manual */
