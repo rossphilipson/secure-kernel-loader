@@ -30,6 +30,7 @@
 #include <string.h>
 #include <printk.h>
 #include <dev.h>
+#include <psp.h>
 
 const skl_info_t __used skl_info = {
     .uuid = {
@@ -39,6 +40,7 @@ const skl_info_t __used skl_info = {
     .version = 0,
 };
 
+#if !defined(AMDSL)
 static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr, char *ev)
 {
     u8 hash[SHA1_DIGEST_SIZE];
@@ -65,6 +67,7 @@ static void extend_pcr(struct tpm *tpm, void *data, u32 size, u32 pcr, char *ev)
 
     print("PCR extended\n");
 }
+#endif /* AMDSL */
 
 /*
  * Even though die() has both __attribute__((noreturn)) and unreachable(),
@@ -117,6 +120,7 @@ static void do_dma(void)
 }
 #endif
 
+#if !defined(AMDSL)
 static void dma_protection_setup(void)
 {
     u32 iommu_cap;
@@ -231,6 +235,8 @@ static void dma_protection_setup(void)
 #endif
 }
 
+#endif /* AMDSL */
+
 /*
  * Function return ABI magic:
  *
@@ -243,8 +249,70 @@ typedef struct {
     void *dlme_arg;     /* %edx */
 } asm_return_t;
 
+
+#if defined(AMDSL)
+
+static asm_return_t amdsl_launch()
+{
+    struct slr_entry_dl_info *dl_info;
+    asm_return_t ret;
+
+    dl_info = next_entry_with_tag(NULL, SLR_ENTRY_DL_INFO);
+
+    if ( dl_info                                     == NULL
+         || dl_info->hdr.size                        != sizeof(*dl_info)
+         || end_of_slrt()                             < _p(&dl_info[1])
+         || dl_info->dlme_base                       >= 0x100000000ULL
+         || dl_info->dlme_base + dl_info->dlme_size  >= 0x100000000ULL
+         || dl_info->dlme_entry                      >= dl_info->dlme_size
+         || dl_info->bl_context.bootloader           != SLR_BOOTLOADER_GRUB )
+    {
+        print("Bad bootloader data format\n");
+        reboot();
+    }
+
+    pci_init();
+
+    if (discover_psp()) {
+        print("AMDSL: PSP found\n");
+    } else {
+        print("AMDSL: PSP NOT found\n");
+    }
+
+    if (!drtm_launch()) {
+        print("AMDSL: skl_linux: DRTM launch failed\n");
+    } else {
+        print("AMDSL: skl_linux: DRTM launch successful\n");
+    }
+
+    if (!drtm_extend_ossl_digest((u64)dl_info->dlme_base, dl_info->dlme_size)) {
+        print("DRTM: skl_linux: failed to extend OSSL digest\n");
+    }
+
+    ret.dlme_entry = _p(dl_info->dlme_base + dl_info->dlme_entry);
+    ret.dlme_arg = _p(dl_info->bl_context.context);
+
+    /* End of the line, off to the protected mode entry into the kernel */
+    print("dlme_entry:\n");
+    hexdump(ret.dlme_entry, 0x100);
+    print("dlme_arg:\n");
+    hexdump(ret.dlme_arg, 0x280);
+    print("skl_base:\n");
+    hexdump(_start, 0x100);
+    print("bootloader_data:\n");
+    hexdump(&bootloader_data, bootloader_data.size);
+
+    print("amdsl_launch() is about to exit\n");
+
+    return ret;
+}
+
+#endif /* AMDSL */
+
 asm_return_t skl_main(void)
 {
+#if !defined(AMDSL)
+
     struct tpm *tpm;
     struct slr_entry_dl_info *dl_info;
     asm_return_t ret;
@@ -314,4 +382,10 @@ asm_return_t skl_main(void)
     print("skl_main() is about to exit\n");
 
     return ret;
+
+#else /* AMDSL */
+
+    return amdsl_launch();
+
+#endif /* AMDSL */
 }
