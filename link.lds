@@ -49,6 +49,12 @@ SECTIONS
 
 	_end_of_measured = .;
 
+	. = ALIGN(16);
+
+	.skinit_reserved : {
+		*(.skinit_reserved)
+	}
+
 	.bss : {
 		. = ALIGN(4096);
 		_bss = .;
@@ -72,6 +78,8 @@ SECTIONS
 	.bootloader_data : {
 		*(.bootloader_data)
 	}
+
+	. = 0xFFF4;
 
 	_end = .;
 

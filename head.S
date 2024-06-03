@@ -313,6 +313,10 @@ gdt:
 .Lgdt_end:
 ENDDATA(gdt)
 
+	.section .skinit_reserved, "a", @progbits
+GLOBAL(skinit_reserved)
+	.fill 0x740, 1, 0x00
+
 #ifdef __x86_64__
 	/* 64bit Pagetables, identity map of the first 4G of RAM. */
 	.section .bss.page_data, "aw", @nobits
