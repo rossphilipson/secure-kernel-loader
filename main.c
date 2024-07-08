@@ -255,13 +255,27 @@ typedef struct {
 static asm_return_t amdsl_launch()
 {
     struct slr_entry_dl_info *dl_info;
+    struct slr_entry_amd_info *amd_info;
+    struct tpm *tpm;
     asm_return_t ret;
 
+    print("Enter amdsl_launch()\n");
+
+    tpm = enable_tpm();
+    tpm_request_locality(tpm, 2);
+    event_log_init(tpm);
+
+    print("TPM enabled and logging initialized\n");
+
     dl_info = next_entry_with_tag(NULL, SLR_ENTRY_DL_INFO);
+    amd_info = next_entry_with_tag(NULL, SLR_ENTRY_AMD_INFO);
 
     if ( dl_info                                     == NULL
+         || amd_info                                 == NULL
          || dl_info->hdr.size                        != sizeof(*dl_info)
          || end_of_slrt()                             < _p(&dl_info[1])
+         || amd_info->hdr.size                       != sizeof(*amd_info)
+         || end_of_slrt()                             < _p(&amd_info[1])
          || dl_info->dlme_base                       >= 0x100000000ULL
          || dl_info->dlme_base + dl_info->dlme_size  >= 0x100000000ULL
          || dl_info->dlme_entry                      >= dl_info->dlme_size
@@ -290,7 +304,7 @@ static asm_return_t amdsl_launch()
     }
 
     ret.dlme_entry = _p(dl_info->dlme_base + dl_info->dlme_entry);
-    ret.dlme_arg = _p(dl_info->bl_context.context);
+    ret.dlme_arg = _p(amd_info->boot_params_base);
 
     /* End of the line, off to the protected mode entry into the kernel */
     print("dlme_entry:\n");

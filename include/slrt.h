@@ -31,8 +31,8 @@
  * Common SLRT Table Header
  */
 struct slr_entry_hdr {
-    u16 tag;
-    u16 size;
+    u32 tag;
+    u32 size;
 } __packed;
 
 /*
@@ -62,7 +62,7 @@ struct slr_bl_context {
  */
 struct slr_entry_dl_info {
     struct slr_entry_hdr hdr;
-    u32 dce_size;
+    u64 dce_size;
     u64 dce_base;
     u64 dlme_size;
     u64 dlme_base;
@@ -77,9 +77,22 @@ struct slr_entry_dl_info {
 struct slr_entry_log_info {
     struct slr_entry_hdr hdr;
     u16 format;
-    u16 reserved[3];
+    u16 reserved;
     u32 size;
     u64 addr;
+} __packed;
+
+/*
+ * AMD SKINIT Info table
+ */
+struct slr_entry_amd_info {
+    struct slr_entry_hdr hdr;
+    u64 next;
+    u32 type;
+    u32 len;
+    u64 slrt_size;
+    u64 slrt_base;
+    u64 boot_params_base;
 } __packed;
 
 /* Secure Kernel Loader */

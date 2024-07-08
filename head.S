@@ -270,7 +270,7 @@ GLOBAL(_entry)
 	 */
 	/* Linux expects Zero Page address in %esi, it is already there */
 	/* Multiboot2 expects MBI address in %ebx and magic number in %eax */
-	mov	%esi, %ebx
+	mov	%edi, %ebx
 	mov	$MULTIBOOT2_BOOTLOADER_MAGIC, %eax
 	/* Simple payload expects argument on stack followed by return address */
 	push	%esi
